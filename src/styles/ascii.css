@@ -1,14 +1,29 @@
 .ascii-root {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   white-space: pre;
-  line-height: 1.2;
   letter-spacing: 0;
   font-variant-ligatures: none;
+  --ascii-ink: #000;
 }
 
 .ascii-pre {
   margin: 0;
   white-space: pre;
+  color: var(--ascii-ink);
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.ascii-pre-measure {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.ascii-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
 }
 
 .ascii-debug {
@@ -22,4 +37,11 @@
   color: #fff;
   border-radius: 4px;
   pointer-events: none;
+}
+
+.ascii-frame-debug {
+  position: absolute;
+  border: 1px dashed rgba(255, 0, 0, 0.7);
+  pointer-events: none;
+  box-sizing: border-box;
 }

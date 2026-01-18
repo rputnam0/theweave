@@ -2,6 +2,8 @@ const { spawn } = require('node:child_process');
 const path = require('node:path');
 
 const DEFAULT_CONFIG_PATH = path.resolve(__dirname, '..', 'boxes', 'boxes', 'boxes-config');
+const fs = require('node:fs');
+
 const DEFAULT_TIMEOUT_MS = 200;
 const DEFAULT_MAX_OUTPUT_BYTES = 200_000;
 const DEFAULT_MAX_TEXT_LENGTH = 10_000;
@@ -10,15 +12,36 @@ const DEFAULT_MAX_COLS = 200;
 const DEFAULT_MAX_ROWS = 200;
 const DEFAULT_CACHE_LIMIT = 200;
 
-const DESIGN_ALLOWLIST = new Set([
-  'simple',
-  'parchment',
-  'ansi',
-  'ansi-rounded',
-  'ansi-double',
-  'boxquote',
-  'shell',
-]);
+const DESIGN_ALLOWLIST = (() => {
+  try {
+    const configText = fs.readFileSync(DEFAULT_CONFIG_PATH, 'utf8');
+    const names = [];
+    for (const line of configText.split(/\r?\n/)) {
+      const match = line.match(/^\s*BOX\s+(.+)\s*$/);
+      if (!match) continue;
+      const raw = match[1].trim();
+      const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
+      for (let name of parts) {
+        if (name.startsWith('"') && name.endsWith('"')) {
+          name = name.slice(1, -1);
+        }
+        if (name) names.push(name);
+      }
+    }
+    if (names.length) return new Set(names);
+  } catch (err) {
+    // fall through to default allowlist
+  }
+  return new Set([
+    'simple',
+    'parchment',
+    'ansi',
+    'ansi-rounded',
+    'ansi-double',
+    'boxquote',
+    'shell',
+  ]);
+})();
 
 const ALIGN_REGEX = /^(h[clr])?(v[tcb])?(j[clr])?$|^[lcr]$/;
 const EOL_ALLOWLIST = new Set(['LF']);

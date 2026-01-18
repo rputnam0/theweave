@@ -2,7 +2,7 @@ import { useContext, useLayoutEffect, useMemo, useState } from 'react';
 import { AsciiMetricsContext } from './metricsContext';
 import type { AsciiBoxPaddingCells, CssLength } from './types';
 
-export const DEFAULT_MEASURE_CHARS = '*-/\\_|~`+=#╭╮╰╯┌┐└┘─│═║';
+export const DEFAULT_MEASURE_CHARS = 'MWX@#*+-_|';
 
 const buildFontString = (style: CSSStyleDeclaration) => {
   const fontStyle = style.fontStyle || 'normal';
@@ -42,6 +42,7 @@ const parseCssNumber = (value?: CssLength) => {
 export type AsciiCellMetrics = {
   charWidthPx: number;
   lineHeightPx: number;
+  letterSpacingPx: number;
 };
 
 export const resolveCssLengthPx = (
@@ -63,8 +64,14 @@ export const resolveCssLengthPx = (
   return null;
 };
 
-export const snapToCols = (px: number, metrics: AsciiCellMetrics) =>
-  Math.max(1, Math.round(px / metrics.charWidthPx));
+const getAdvanceWidth = (metrics: AsciiCellMetrics) =>
+  Math.max(1, metrics.charWidthPx + metrics.letterSpacingPx);
+
+export const snapToCols = (px: number, metrics: AsciiCellMetrics) => {
+  const advance = getAdvanceWidth(metrics);
+  const cols = (px + metrics.letterSpacingPx) / advance;
+  return Math.max(1, Math.round(cols));
+};
 
 export const snapToRows = (px: number, metrics: AsciiCellMetrics) =>
   Math.max(1, Math.round(px / metrics.lineHeightPx));
@@ -74,15 +81,16 @@ export const snapPadding = (
   metrics: AsciiCellMetrics,
   element: HTMLElement
 ): AsciiBoxPaddingCells => {
+  const advance = getAdvanceWidth(metrics);
   const topPx = resolveCssLengthPx(padding?.top, metrics, element) ?? 0;
   const rightPx = resolveCssLengthPx(padding?.right, metrics, element) ?? 0;
   const bottomPx = resolveCssLengthPx(padding?.bottom, metrics, element) ?? 0;
   const leftPx = resolveCssLengthPx(padding?.left, metrics, element) ?? 0;
   return {
     top: Math.max(0, Math.round(topPx / metrics.lineHeightPx)),
-    right: Math.max(0, Math.round(rightPx / metrics.charWidthPx)),
+    right: Math.max(0, Math.round(rightPx / advance)),
     bottom: Math.max(0, Math.round(bottomPx / metrics.lineHeightPx)),
-    left: Math.max(0, Math.round(leftPx / metrics.charWidthPx)),
+    left: Math.max(0, Math.round(leftPx / advance)),
   };
 };
 
@@ -91,7 +99,10 @@ export const useAsciiCellMetrics = (
   measureChars: string = DEFAULT_MEASURE_CHARS
 ) => {
   const contextMetrics = useContext(AsciiMetricsContext);
-  const [metrics, setMetrics] = useState<AsciiCellMetrics | null>(contextMetrics);
+  const normalizedContext = contextMetrics
+    ? { letterSpacingPx: 0, ...contextMetrics }
+    : null;
+  const [metrics, setMetrics] = useState<AsciiCellMetrics | null>(normalizedContext);
 
   useLayoutEffect(() => {
     if (!element || contextMetrics) return;
@@ -100,8 +111,16 @@ export const useAsciiCellMetrics = (
     const fontSize = parseFloat(style.fontSize) || 16;
     const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.2;
     const charWidth = measureCharWidth(fontString, measureChars);
-    setMetrics({ charWidthPx: charWidth, lineHeightPx: lineHeight });
+    const letterSpacingRaw = style.letterSpacing;
+    const letterSpacingPx =
+      !letterSpacingRaw || letterSpacingRaw === 'normal'
+        ? 0
+        : Number.parseFloat(letterSpacingRaw) || 0;
+    setMetrics({ charWidthPx: charWidth, lineHeightPx: lineHeight, letterSpacingPx });
   }, [element, measureChars, contextMetrics]);
 
-  return useMemo(() => metrics || { charWidthPx: 8, lineHeightPx: 16 }, [metrics]);
+  return useMemo(
+    () => metrics || { charWidthPx: 8, lineHeightPx: 16, letterSpacingPx: 0 },
+    [metrics]
+  );
 };

@@ -1,76 +1,69 @@
 import { AsciiBox } from './AsciiBox';
-import { AsciiMetricsProvider } from './ui/ascii/AsciiMetricsProvider';
-
-const JS_SNIPPET = [
-  'const quest = {',
-  '  id: "weave-01",',
-  '  status: "active",',
-  '  steps: ["map", "tokens", "ritual"],',
-  '};',
-  '',
-  'export const advanceQuest = (state) => ({',
-  '  ...state,',
-  '  step: state.step + 1,',
-  '});',
-].join('\n');
-
-const HOOK_SNIPPET = [
-  'import { useMemo } from "react";',
-  '',
-  'export const useGlyphs = (glyphs) =>',
-  '  useMemo(() => glyphs.join(""), [glyphs]);',
-].join('\n');
-
-const UTIL_SNIPPET = [
-  'const clamp = (value, min, max) =>',
-  '  Math.min(max, Math.max(min, value));',
-  '',
-  'export const toCols = (px, charWidth) =>',
-  '  clamp(Math.round(px / charWidth), 2, 200);',
-].join('\n');
+import designGlyphs from './ui/ascii/designGlyphs.json';
 
 export function AsciiBoxesDemo() {
+  const designs = Object.keys(designGlyphs).sort();
+  const spans = [3, 4, 5, 6, 7];
+  const heights = [140, 156, 168, 180, 196, 220, 240];
+  const fontSizes = [12, 13, 14, 15, 16, 18, 20];
+  const lineHeights = [16, 17, 18, 19, 20, 22, 24, 26];
+  const weights = [500, 600, 700, 800];
+  const paddings = ['0.5ch', '1ch', '1.5ch', '2ch', 6, 8, 10, 12];
+  const palettes = [
+    '#2563eb',
+    '#14b8a6',
+    '#f97316',
+    '#4f46e5',
+    '#ef4444',
+    '#059669',
+    '#0ea5e9',
+    '#8b5cf6',
+    '#d97706',
+    '#a855f7',
+    '#0f766e',
+    '#ea580c',
+  ];
+  const apiBaseUrl = import.meta.env?.VITE_BOXES_API_BASE_URL || 'http://localhost:3005';
+  const showDebug = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search).get('debug') === '1'
+    : false;
   return (
-    <AsciiMetricsProvider className="ascii-root h-full w-full">
-      <div className="h-full w-full overflow-auto bg-[radial-gradient(circle_at_top,_#f1f0e6,_#d8d1bf)] p-6">
-        <div className="mx-auto flex w-full max-w-[90ch] flex-col gap-6">
-          <div className="grid gap-6 md:grid-cols-2">
-            <AsciiBox
-              design="simple"
-              width="42ch"
-              height="14lh"
-              padding="1ch"
-              wrap="hard"
-              content={JS_SNIPPET}
-              className="bg-[#f8f2e3] text-[#231f1a] shadow-[0_12px_30px_-20px_rgba(0,0,0,0.35)]"
-              title="Quest State"
-              titleClassName="bg-[#f8f2e3] text-[#231f1a]"
-            />
-            <AsciiBox
-              design="ansi-rounded"
-              width="42ch"
-              height="14lh"
-              padding="1ch"
-              wrap="hard"
-              content={HOOK_SNIPPET}
-              className="bg-[#eef3f7] text-[#102a3a] shadow-[0_12px_30px_-20px_rgba(0,0,0,0.35)]"
-              title="Hook"
-              titleClassName="bg-[#eef3f7] text-[#102a3a]"
-            />
-          </div>
-          <AsciiBox
-            design="parchment"
-            width="86ch"
-            height="18lh"
-            padding="2ch"
-            wrap="word"
-            content={UTIL_SNIPPET}
-            className="bg-[#f7efe0] text-[#30281e] shadow-[0_18px_45px_-30px_rgba(0,0,0,0.4)]"
-            title="Utilities"
-            titleClassName="bg-[#f7efe0] text-[#30281e]"
-          />
+    <div className="bg-gray-100 min-h-screen p-4" style={{ overflowY: 'auto' }}>
+      <div className="mx-auto w-full" style={{ maxWidth: '1280px' }}>
+        <div className="grid grid-cols-12 gap-4">
+          {designs.map((design, index) => {
+            const span = spans[index % spans.length];
+            const height = heights[index % heights.length];
+            const fontSize = fontSizes[index % fontSizes.length];
+            const lineHeight = lineHeights[index % lineHeights.length];
+            const fontWeight = weights[index % weights.length];
+            const padding = paddings[index % paddings.length];
+            const backgroundColor = palettes[index % palettes.length];
+            const letterSpacing = index % 5 === 0 ? '0.6px' : undefined;
+            const alignClass = index % 3 === 0 ? 'items-start' : index % 3 === 1 ? 'items-center' : 'items-end';
+            return (
+              <AsciiBox
+                key={design}
+                design={design}
+                content={design}
+                apiBaseUrl={apiBaseUrl}
+                debug={showDebug}
+                padding={padding as string | number}
+                className={`rounded-xl shadow-lg flex justify-center text-white ${alignClass}`}
+                style={{
+                  gridColumn: `span ${span} / span ${span}`,
+                  height: `${height}px`,
+                  backgroundColor,
+                  fontSize: `${fontSize}px`,
+                  lineHeight: `${lineHeight}px`,
+                  fontWeight,
+                  letterSpacing,
+                }}
+              />
+            );
+          })}
         </div>
       </div>
-    </AsciiMetricsProvider>
+    </div>
   );
 }

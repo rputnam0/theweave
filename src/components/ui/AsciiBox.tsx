@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
+import { CSSProperties, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { cn } from './utils';
 import { displayWidth } from './ascii/displayWidth';
 import {
@@ -9,7 +9,11 @@ import {
   snapToRows,
   useAsciiCellMetrics,
 } from './ascii/measure';
+import { computeInkFit, type InkFit } from './ascii/inkFit';
+import designGlyphs from './ascii/designGlyphs.json';
+import { detectFrame, maskTextToFrame } from './ascii/frame';
 import { solveBox } from './ascii/boxesClient';
+import { renderNodeToText } from './ascii/serializeContent';
 import type { AsciiBoxAlign, AsciiBoxMeasured, AsciiBoxPadding, CssLength } from './ascii/types';
 
 type WrapPolicy = 'off' | 'hard' | 'word';
@@ -17,8 +21,8 @@ type OverflowPolicy = 'clip' | 'ellipsis';
 
 type AsciiBoxProps = {
   design: string;
-  children?: string;
-  content?: string;
+  children?: ReactNode;
+  content?: ReactNode;
   className?: string;
   style?: CSSProperties;
   width?: CssLength;
@@ -40,6 +44,8 @@ type AsciiBoxProps = {
   debounceMs?: number;
   debug?: boolean;
   measureChars?: string;
+  overlay?: ReactNode;
+  overlayClassName?: string;
   title?: string;
   titleClassName?: string;
   titleOffsetCols?: number;
@@ -143,6 +149,9 @@ const wrapText = (text: string, width: number, wrap: WrapPolicy, overflow: Overf
     .join('\n\n');
 };
 
+const getMeasureCharsForDesign = (design: string, fallback: string) =>
+  designGlyphs[design as keyof typeof designGlyphs] || fallback;
+
 const warnIfFractional = (label: string, px: number, unitPx: number) => {
   if (!import.meta.env?.DEV) return;
   const raw = px / unitPx;
@@ -177,19 +186,37 @@ export function AsciiBox({
   apiBaseUrl,
   debounceMs = DEFAULT_DEBOUNCE_MS,
   debug = false,
-  measureChars = DEFAULT_MEASURE_CHARS,
+  measureChars,
+  overlay,
+  overlayClassName,
   title,
   titleClassName,
   titleOffsetCols = 0,
   titleOffsetRows = 0,
 }: AsciiBoxProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const measureRef = useRef<HTMLPreElement | null>(null);
+  const frameMeasureRef = useRef<HTMLPreElement | null>(null);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [boxText, setBoxText] = useState('');
   const [measured, setMeasured] = useState<AsciiBoxMeasured | null>(null);
   const [pending, setPending] = useState(false);
-  const text = typeof content === 'string' ? content : (typeof children === 'string' ? children : '');
-  const metrics = useAsciiCellMetrics(containerRef.current, measureChars);
+  const [domFit, setDomFit] = useState<InkFit | null>(null);
+  const [frameFit, setFrameFit] = useState<InkFit | null>(null);
+  const rawContent = content ?? children;
+  const text = useMemo(() => {
+    if (typeof rawContent === 'string' || typeof rawContent === 'number') {
+      return String(rawContent);
+    }
+    return renderNodeToText(rawContent);
+  }, [rawContent]);
+  const resolvedMeasureChars = useMemo(
+    () => measureChars ?? getMeasureCharsForDesign(design, DEFAULT_MEASURE_CHARS),
+    [measureChars, design]
+  );
+  const metrics = useAsciiCellMetrics(containerRef.current, resolvedMeasureChars);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -210,18 +237,40 @@ export function AsciiBox({
     };
   }, []);
 
+  useEffect(() => {
+    const element = overlayRef.current;
+    if (!element) return;
+    let frame = 0;
+    const observer = new ResizeObserver((entries) => {
+      if (!entries[0]) return;
+      const next = entries[0].contentRect;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        setOverlaySize({ width: next.width, height: next.height });
+      });
+    });
+    observer.observe(element);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [overlay]);
+
   const layout = useMemo(() => {
     const element = containerRef.current;
     if (!element) return null;
+    const charAdvancePx = metrics.charWidthPx + metrics.letterSpacingPx;
+    const colsToPx = (count: number) =>
+      (count * metrics.charWidthPx) + (Math.max(0, count - 1) * metrics.letterSpacingPx);
     const paddingSpec: AsciiBoxPadding = {
       top: paddingTop ?? paddingY ?? padding ?? 0,
       right: paddingRight ?? paddingX ?? padding ?? 0,
       bottom: paddingBottom ?? paddingY ?? padding ?? 0,
       left: paddingLeft ?? paddingX ?? padding ?? 0,
     };
-    const widthPx = cols ? cols * metrics.charWidthPx : resolveCssLengthPx(width, metrics, element);
+    const widthPx = cols ? colsToPx(cols) : resolveCssLengthPx(width, metrics, element);
     const heightPx = rows ? rows * metrics.lineHeightPx : resolveCssLengthPx(height, metrics, element);
-    if (widthPx !== null) warnIfFractional('width', widthPx, metrics.charWidthPx);
+    if (widthPx !== null) warnIfFractional('width', widthPx, charAdvancePx);
     if (heightPx !== null) warnIfFractional('height', heightPx, metrics.lineHeightPx);
     const snappedPadding = snapPadding(paddingSpec, metrics, element);
     if (paddingSpec.top) {
@@ -230,7 +279,7 @@ export function AsciiBox({
     }
     if (paddingSpec.right) {
       const rightPx = resolveCssLengthPx(paddingSpec.right, metrics, element);
-      if (rightPx !== null) warnIfFractional('padding-right', rightPx, metrics.charWidthPx);
+      if (rightPx !== null) warnIfFractional('padding-right', rightPx, charAdvancePx);
     }
     if (paddingSpec.bottom) {
       const bottomPx = resolveCssLengthPx(paddingSpec.bottom, metrics, element);
@@ -238,10 +287,18 @@ export function AsciiBox({
     }
     if (paddingSpec.left) {
       const leftPx = resolveCssLengthPx(paddingSpec.left, metrics, element);
-      if (leftPx !== null) warnIfFractional('padding-left', leftPx, metrics.charWidthPx);
+      if (leftPx !== null) warnIfFractional('padding-left', leftPx, charAdvancePx);
     }
-    const rawCols = cols || (widthPx ?? containerSize.width);
-    const rawRows = rows || (heightPx ?? containerSize.height);
+    const effectiveWidth = Math.max(
+      widthPx ?? containerSize.width,
+      overlaySize.width
+    );
+    const effectiveHeight = Math.max(
+      heightPx ?? containerSize.height,
+      overlaySize.height
+    );
+    const rawCols = cols || effectiveWidth;
+    const rawRows = rows || effectiveHeight;
     const targetCols = Math.max(2, cols || snapToCols(rawCols, metrics));
     const targetRows = Math.max(2, rows || snapToRows(rawRows, metrics));
     const innerCols = Math.max(1, targetCols - snappedPadding.left - snappedPadding.right - 2);
@@ -276,7 +333,206 @@ export function AsciiBox({
     height,
     cols,
     rows,
+    overlaySize.width,
+    overlaySize.height,
   ]);
+
+  const frameData = useMemo(() => {
+    if (!boxText) return null;
+    const frame = detectFrame(boxText);
+    if (!frame) return null;
+    const frameText = maskTextToFrame(boxText, frame);
+    return { frame, frameText };
+  }, [boxText]);
+
+  const inkFit = useMemo(() => {
+    if (!layout || !boxText) return null;
+    const element = containerRef.current;
+    if (!element) return null;
+    const style = getComputedStyle(element);
+    const fontStyle = style.fontStyle || 'normal';
+    const fontWeight = style.fontWeight || '400';
+    const fontSize = style.fontSize || '16px';
+    const fontFamily = style.fontFamily || 'monospace';
+    const fontString = `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.font = fontString;
+    const useLayoutTarget = Boolean(frameData);
+    const fitCols = useLayoutTarget ? layout.cols : (measured?.cols ?? layout.cols);
+    const fitRows = useLayoutTarget ? layout.rows : (measured?.rows ?? layout.rows);
+    return computeInkFit({
+      text: boxText,
+      cols: fitCols,
+      rows: fitRows,
+      charWidthPx: metrics.charWidthPx,
+      lineHeightPx: metrics.lineHeightPx,
+      letterSpacingPx: metrics.letterSpacingPx,
+      measureText: (value) => ctx.measureText(value),
+    });
+  }, [boxText, frameData, layout, metrics, measured]);
+
+  const frameInkFit = useMemo(() => {
+    if (!layout || !frameData) return null;
+    const element = containerRef.current;
+    if (!element) return null;
+    const style = getComputedStyle(element);
+    const fontStyle = style.fontStyle || 'normal';
+    const fontWeight = style.fontWeight || '400';
+    const fontSize = style.fontSize || '16px';
+    const fontFamily = style.fontFamily || 'monospace';
+    const fontString = `${fontStyle} ${fontWeight} ${fontSize} ${fontFamily}`;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.font = fontString;
+    return computeInkFit({
+      text: frameData.frameText,
+      cols: layout.cols,
+      rows: layout.rows,
+      charWidthPx: metrics.charWidthPx,
+      lineHeightPx: metrics.lineHeightPx,
+      letterSpacingPx: metrics.letterSpacingPx,
+      measureText: (value) => ctx.measureText(value),
+    });
+  }, [frameData, layout, metrics]);
+
+  const resolvedFit = useMemo(() => {
+    if (!layout) return null;
+    const primaryFit = frameFit || domFit || frameInkFit || inkFit;
+    const secondaryFit = domFit || frameInkFit || inkFit;
+    if (!primaryFit) return null;
+    if (!secondaryFit || primaryFit === secondaryFit) return primaryFit;
+    const fitCols = measured?.cols ?? layout.cols;
+    const fitRows = measured?.rows ?? layout.rows;
+    const targetWidth =
+      (fitCols * metrics.charWidthPx) + (Math.max(0, fitCols - 1) * metrics.letterSpacingPx);
+    const targetHeight = fitRows * metrics.lineHeightPx;
+    const scoreFit = (fit: InkFit) => {
+      const basis = frameInkFit || inkFit;
+      if (!basis) return Number.POSITIVE_INFINITY;
+      const minX = (basis.minX * fit.scaleX) + fit.offsetX;
+      const maxX = (basis.maxX * fit.scaleX) + fit.offsetX;
+      const minY = (basis.minY * fit.scaleY) + fit.offsetY;
+      const maxY = (basis.maxY * fit.scaleY) + fit.offsetY;
+      const overflow = Math.max(
+        Math.max(0, -minX),
+        Math.max(0, maxX - targetWidth),
+        Math.max(0, -minY),
+        Math.max(0, maxY - targetHeight)
+      );
+      return overflow;
+    };
+    const primaryOverflow = scoreFit(primaryFit);
+    const secondaryOverflow = scoreFit(secondaryFit);
+    if (secondaryOverflow + 0.25 < primaryOverflow) return secondaryFit;
+    return primaryFit;
+  }, [domFit, frameFit, frameInkFit, inkFit, layout, measured, metrics]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const measureEl = measureRef.current;
+    if (!container || !measureEl || !layout || !boxText) return;
+    let frame = 0;
+    frame = window.requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const measureRect = measureEl.getBoundingClientRect();
+      const width = measureRect.width;
+      const height = measureRect.height;
+      if (width < 1 || height < 1 || containerRect.width < 1 || containerRect.height < 1) {
+        setDomFit(null);
+        return;
+      }
+      const minX = measureRect.left - containerRect.left;
+      const minY = measureRect.top - containerRect.top;
+      const maxX = minX + width;
+      const maxY = minY + height;
+      const scaleX = containerRect.width / width;
+      const scaleY = containerRect.height / height;
+      const offsetX = -minX * scaleX;
+      const offsetY = -minY * scaleY;
+      const nextFit = {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        inkWidth: width,
+        inkHeight: height,
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY,
+      };
+      setDomFit((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.scaleX - nextFit.scaleX) < 0.002 &&
+          Math.abs(prev.scaleY - nextFit.scaleY) < 0.002 &&
+          Math.abs(prev.offsetX - nextFit.offsetX) < 0.5 &&
+          Math.abs(prev.offsetY - nextFit.offsetY) < 0.5
+        ) {
+          return prev;
+        }
+        return nextFit;
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [boxText, layout, containerSize, overlaySize]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const frameEl = frameMeasureRef.current;
+    if (!container || !frameEl || !layout || !frameData) return;
+    let frame = 0;
+    frame = window.requestAnimationFrame(() => {
+      const containerRect = container.getBoundingClientRect();
+      const measureRect = frameEl.getBoundingClientRect();
+      const width = measureRect.width;
+      const height = measureRect.height;
+      if (width < 1 || height < 1 || containerRect.width < 1 || containerRect.height < 1) {
+        setFrameFit(null);
+        return;
+      }
+      const minX = measureRect.left - containerRect.left;
+      const minY = measureRect.top - containerRect.top;
+      const maxX = minX + width;
+      const maxY = minY + height;
+      const scaleX = containerRect.width / width;
+      const scaleY = containerRect.height / height;
+      const offsetX = -minX * scaleX;
+      const offsetY = -minY * scaleY;
+      const nextFit = {
+        minX,
+        minY,
+        maxX,
+        maxY,
+        inkWidth: width,
+        inkHeight: height,
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY,
+      };
+      setFrameFit((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.scaleX - nextFit.scaleX) < 0.002 &&
+          Math.abs(prev.scaleY - nextFit.scaleY) < 0.002 &&
+          Math.abs(prev.offsetX - nextFit.offsetX) < 0.5 &&
+          Math.abs(prev.offsetY - nextFit.offsetY) < 0.5
+        ) {
+          return prev;
+        }
+        return nextFit;
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [frameData, layout, containerSize, overlaySize]);
 
   useEffect(() => {
     if (!layout) return;
@@ -322,22 +578,58 @@ export function AsciiBox({
     };
   }, [layout, design, align, tabs, apiBaseUrl, debounceMs]);
 
+  const hasExplicitSize = cols !== undefined || rows !== undefined || width !== undefined || height !== undefined;
   const displayCols = measured?.cols ?? layout?.cols;
   const displayRows = measured?.rows ?? layout?.rows;
   const boxStyle: CSSProperties = {
-    width: displayCols ? `${displayCols * metrics.charWidthPx}px` : undefined,
-    height: displayRows ? `${displayRows * metrics.lineHeightPx}px` : undefined,
+    ...(hasExplicitSize && layout
+      ? {
+          width: `${(layout.cols * metrics.charWidthPx) + (Math.max(0, layout.cols - 1) * metrics.letterSpacingPx)}px`,
+          height: `${layout.rows * metrics.lineHeightPx}px`,
+        }
+      : null),
+    ...(overlaySize.width || overlaySize.height
+      ? {
+          minWidth: overlaySize.width ? `${overlaySize.width}px` : undefined,
+          minHeight: overlaySize.height ? `${overlaySize.height}px` : undefined,
+        }
+      : null),
     ...style,
   };
 
   return (
     <div ref={containerRef} className={cn('ascii-root relative', className)} style={boxStyle}>
-      <pre className="ascii-pre">{boxText}</pre>
+      <pre
+        className="ascii-pre"
+        style={
+          resolvedFit
+            ? {
+                transform: `translate(${resolvedFit.offsetX}px, ${resolvedFit.offsetY}px) scale(${resolvedFit.scaleX}, ${resolvedFit.scaleY})`,
+                transformOrigin: 'top left',
+              }
+            : undefined
+        }
+      >
+        {boxText}
+      </pre>
+      <pre ref={measureRef} className="ascii-pre ascii-pre-measure" aria-hidden="true">
+        {boxText}
+      </pre>
+      {frameData && (
+        <pre ref={frameMeasureRef} className="ascii-pre ascii-pre-measure" aria-hidden="true">
+          {frameData.frameText}
+        </pre>
+      )}
+      {overlay && (
+        <div ref={overlayRef} className={cn('ascii-overlay', overlayClassName)}>
+          {overlay}
+        </div>
+      )}
       {title && layout && (
         <div
           className={cn('pointer-events-none absolute font-mono text-[12px] font-semibold', titleClassName)}
           style={{
-            left: `${(layout.padding.left + titleOffsetCols) * metrics.charWidthPx}px`,
+            left: `${(layout.padding.left + titleOffsetCols) * (metrics.charWidthPx + metrics.letterSpacingPx)}px`,
             top: `${(layout.padding.top + titleOffsetRows) * metrics.lineHeightPx}px`,
           }}
         >
@@ -346,6 +638,17 @@ export function AsciiBox({
       )}
       {debug && displayCols && displayRows && (
         <div className="ascii-debug">{displayCols}x{displayRows}{pending ? '…' : ''}</div>
+      )}
+      {debug && frameData && (
+        <div
+          className="ascii-frame-debug"
+          style={{
+            left: `${frameData.frame.left * (metrics.charWidthPx + metrics.letterSpacingPx)}px`,
+            top: `${frameData.frame.top * metrics.lineHeightPx}px`,
+            width: `${(frameData.frame.right - frameData.frame.left + 1) * (metrics.charWidthPx + metrics.letterSpacingPx)}px`,
+            height: `${(frameData.frame.bottom - frameData.frame.top + 1) * metrics.lineHeightPx}px`,
+          }}
+        />
       )}
     </div>
   );

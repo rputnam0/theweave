@@ -13,7 +13,13 @@ import { AsciiBoxesDemo } from './components/AsciiBoxesDemo';
 import { Dices, Swords, Package } from 'lucide-react';
 
 export default function App() {
-  const [activePage, setActivePage] = useState('dm-workbench');
+  const [activePage, setActivePage] = useState(() => {
+    if (import.meta.env?.DEV && typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('demo') === 'ascii-boxes') return 'ascii-boxes';
+    }
+    return 'dm-workbench';
+  });
   const [selectedCampaign, setSelectedCampaign] = useState({
     id: '1',
     name: 'The Lost Mines of Phandelver'
@@ -55,6 +61,10 @@ export default function App() {
     const index = windowOrder.indexOf(win);
     return index === -1 ? baseZIndex : baseZIndex + index + 1;
   };
+
+  if (activePage === 'ascii-boxes') {
+    return <AsciiBoxesDemo />;
+  }
 
   return (
     <div className="flex h-screen bg-background overflow-hidden font-sans">
@@ -169,7 +179,7 @@ function MainContent({
         {activePage === 'ascii-boxes' && (
           <AsciiBoxesDemo />
         )}
-        {activePage !== 'sessions' && activePage !== 'codex' && activePage !== 'quest-log' && activePage !== 'dm-workbench' && activePage !== 'campaign-search' && (
+        {activePage !== 'sessions' && activePage !== 'codex' && activePage !== 'quest-log' && activePage !== 'dm-workbench' && activePage !== 'campaign-search' && activePage !== 'ascii-boxes' && (
           <div className="h-full flex flex-col">
             {/* Placeholder Windows 95 Window for other pages */}
             <div className="bg-primary h-[20px] m-[2px] px-1 flex items-center justify-between select-none shrink-0">

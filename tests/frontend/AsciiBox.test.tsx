@@ -16,7 +16,7 @@ describe('AsciiBox', () => {
     vi.clearAllMocks();
   });
 
-  it('renders API ASCII and sizes to measured dimensions', async () => {
+  it('renders API ASCII and sizes to requested dimensions', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -44,8 +44,8 @@ describe('AsciiBox', () => {
     expect(pre?.textContent).toBe('++\n++');
 
     const root = container.querySelector('.ascii-root') as HTMLDivElement;
-    expect(root.style.width).toBe('20px');
-    expect(root.style.height).toBe('40px');
+    expect(root.style.width).toBe('200px');
+    expect(root.style.height).toBe('120px');
     warnSpy.mockRestore();
   });
 
@@ -141,6 +141,44 @@ describe('AsciiBox', () => {
 
     const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
     expect(body.text).toBe('  two\n  words');
+    warnSpy.mockRestore();
+  });
+
+  it('expands to fit overlay content', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ boxText: '', measured: { cols: 10, rows: 4 } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    rectSpy.mockImplementation(function () {
+      if (this.classList?.contains('ascii-overlay')) {
+        return { width: 480, height: 260, top: 0, left: 0, bottom: 260, right: 480 } as DOMRect;
+      }
+      return { width: 320, height: 200, top: 0, left: 0, bottom: 200, right: 320 } as DOMRect;
+    });
+
+    const element = (
+      <AsciiBox
+        design="simple"
+        content="Overlay test"
+        overlay={<div style={{ width: 480, height: 260 }}>Overlay</div>}
+        apiBaseUrl="http://example.com"
+        debounceMs={0}
+      />
+    );
+    const { container, rerender } = render(withMetrics(element));
+    rerender(withMetrics(element));
+
+    await waitFor(() => {
+      const root = container.querySelector('.ascii-root') as HTMLDivElement;
+      expect(root.style.minWidth).toBe('480px');
+      expect(root.style.minHeight).toBe('260px');
+    });
+
+    rectSpy.mockRestore();
     warnSpy.mockRestore();
   });
 });

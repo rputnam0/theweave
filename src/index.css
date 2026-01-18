@@ -4160,3 +4160,69 @@ html {
     transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0));
   }
 }
+
+/* Demo utilities for the ASCII boxes layout. */
+.bg-gray-100 {
+  background-color: #f3f4f6;
+}
+
+.bg-blue-500 {
+  background-color: #3b82f6;
+}
+
+.bg-blue-600 {
+  background-color: #2563eb;
+}
+
+.bg-teal-500 {
+  background-color: #14b8a6;
+}
+
+.bg-teal-600 {
+  background-color: #0d9488;
+}
+
+.bg-indigo-600 {
+  background-color: #4f46e5;
+}
+
+.bg-indigo-700 {
+  background-color: #4338ca;
+}
+
+.min-h-screen {
+  min-height: 100vh;
+}
+
+.max-w-2xl {
+  max-width: 42rem;
+}
+
+.h-48 {
+  height: 12rem;
+}
+
+.h-64 {
+  height: 16rem;
+}
+
+.rounded-xl {
+  border-radius: 0.75rem;
+}
+
+.text-2xl {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+.hover\\:bg-blue-600:hover {
+  background-color: #2563eb;
+}
+
+.hover\\:bg-teal-600:hover {
+  background-color: #0d9488;
+}
+
+.hover\\:bg-indigo-700:hover {
+  background-color: #4338ca;
+}

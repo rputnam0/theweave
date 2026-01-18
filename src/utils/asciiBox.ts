@@ -82,8 +82,8 @@ export const computeBoxMetrics = (
   const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.2;
   const charWidth = measureCharWidth(font, measureChars);
 
-  const padX = padding.x ?? parseFloat(style.paddingLeft) || 0;
-  const padY = padding.y ?? parseFloat(style.paddingTop) || 0;
+  const padX = (padding.x ?? parseFloat(style.paddingLeft)) || 0;
+  const padY = (padding.y ?? parseFloat(style.paddingTop)) || 0;
 
   const padCols = Math.max(1, Math.round(padX / charWidth));
   const padRows = Math.max(1, Math.round(padY / lineHeight));

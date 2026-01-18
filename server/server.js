@@ -17,6 +17,12 @@ const DEFAULT_PADDING_COLS = Math.max(1, Math.round(PROTOTYPE_PADDING_PX / CHAR_
 const DEFAULT_PADDING_ROWS = Math.max(1, Math.round(PROTOTYPE_PADDING_PX / LINE_HEIGHT_PX));
 const DIST_DIR = path.resolve(__dirname, '..', 'build');
 
+function setCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
 function escapeHtml(text) {
   return text
     .replace(/&/g, '&amp;')
@@ -84,6 +90,7 @@ function serveStaticFile(req, res) {
 }
 
 async function handleRenderRequest(req, res, body) {
+  setCors(res);
   let payload = null;
   try {
     payload = JSON.parse(body);
@@ -140,6 +147,12 @@ async function handleRenderRequest(req, res, body) {
 }
 
 async function handleRequest(req, res) {
+  setCors(res);
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (req.url === '/favicon.ico') {
     res.writeHead(204);
     res.end();

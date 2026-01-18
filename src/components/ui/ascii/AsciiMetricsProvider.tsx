@@ -13,7 +13,7 @@ export function AsciiMetricsProvider({
   className,
 }: AsciiMetricsProviderProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const [metrics, setMetrics] = useState({ charWidthPx: 8, lineHeightPx: 16 });
+  const [metrics, setMetrics] = useState({ charWidthPx: 8, lineHeightPx: 16, letterSpacingPx: 0 });
 
   useLayoutEffect(() => {
     const element = ref.current;
@@ -36,7 +36,12 @@ export function AsciiMetricsProvider({
     }
     const fontSizePx = parseFloat(style.fontSize) || 16;
     const lineHeightPx = parseFloat(style.lineHeight) || fontSizePx * 1.2;
-    setMetrics({ charWidthPx: max, lineHeightPx });
+    const letterSpacingRaw = style.letterSpacing;
+    const letterSpacingPx =
+      !letterSpacingRaw || letterSpacingRaw === 'normal'
+        ? 0
+        : Number.parseFloat(letterSpacingRaw) || 0;
+    setMetrics({ charWidthPx: max, lineHeightPx, letterSpacingPx });
   }, [measureChars]);
 
   return (
