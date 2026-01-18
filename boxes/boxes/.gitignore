@@ -1,0 +1,73 @@
+#
+# boxes - Command line filter to draw/remove ASCII boxes around text
+# Copyright (c) 1999-2024 Thomas Jensen and the boxes contributors
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+# License, version 3, as published by the Free Software Foundation.
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+# You should have received a copy of the GNU General Public License along with this program.
+# If not, see <https://www.gnu.org/licenses/>.
+#____________________________________________________________________________________________________________________
+#====================================================================================================================
+
+# IDE generated files
+.cproject
+.project
+/.idea/
+/.history/
+/coverage/
+/cmake-build-debug/
+
+# Jekyll generated (website) artifacts
+/.jekyll-metadata
+/_site/
+/_cache/
+/_support/
+
+# Build artifacts
+/doc/boxes.1
+/doc/boxes.1.raw.html
+/doc/boxes.1.html
+/pcre2-*/
+/flex_bison_*/
+/cmocka-*/
+/out/
+*.o
+*.a
+/test/*.tmp
+/vendor/
+/datagen/
+/build/
+CMakeUserPresets.json
+*.swp
+
+# Legacy locations of generated files (no longer in use)
+/src/boxes
+/src/boxes.exe
+/src/boxes.h
+/src/lex.yy.c
+/src/parser.h
+/src/parser.c
+
+# Linux Packaging
+*.tar.gz
+
+# Chocolatey Packaging
+/tools/boxes.*
+/tools/README*.md
+/tools/LICENSE.txt
+/boxes.portable.*.nupkg
+*.nupkg.zip
+
+# MacOS
+.DS_Store
+
+# Misc
+/vs
+
+# CMake / Conan
+build/
+/venv/
+CMakeUserPresets.json

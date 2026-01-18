@@ -1,0 +1,100 @@
+#
+# boxes - Command line filter to draw/remove ASCII boxes around text
+# Copyright (c) 1999-2024 Thomas Jensen and the boxes contributors
+#
+# This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public
+# License, version 3, as published by the Free Software Foundation.
+# This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+# details.
+# You should have received a copy of the GNU General Public License along with this program.
+# If not, see <https://www.gnu.org/licenses/>.
+#____________________________________________________________________________________________________________________
+#====================================================================================================================
+
+name: build
+
+on: [push, pull_request, workflow_dispatch]
+
+env:
+    TERM: xterm-color
+
+jobs:
+    build-linux:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
+
+            - name: add-packages
+              run: |
+                  sudo apt-get update -y
+                  sudo apt-get install -y git flex bison libunistring-dev libpcre2-dev libncurses-dev diffutils vim-common lcov libcmocka-dev
+
+            - name: make cov
+              run: make cov
+
+            - name: Run white-box tests
+              run: make utest
+
+            - name: Run sunny-day tests
+              run: make covtest-sunny
+
+            - name: Run black-box tests
+              run: make covtest
+
+            - name: Coveralls
+              uses: coverallsapp/github-action@v2
+              with:
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+                  file: out/lcov-total.info
+                  format: lcov
+                  flag-name: run-linux
+                  parallel: true
+
+    build-macos:
+        runs-on: macos-13
+        env:
+          BX_LEX: /usr/local/opt/flex/bin/flex
+          BX_YACC: /usr/local/opt/bison/bin/bison
+        steps:
+            - uses: actions/checkout@v4
+
+            # We need to use GNU grep, sed, and xargs on macOS
+            - name: add-packages
+              run: |
+                  brew install flex bison diffutils lcov cmocka grep gnu-sed findutils
+                  echo '/usr/local/opt/grep/libexec/gnubin' >> $GITHUB_PATH
+                  echo '/usr/local/opt/gnu-sed/libexec/gnubin' >> $GITHUB_PATH
+                  echo '/usr/local/opt/findutils/libexec/gnubin' >> $GITHUB_PATH
+
+            - name: make cov
+              run: make cov
+
+            - name: Run white-box tests
+              run: make utest
+
+            - name: Run sunny-day tests
+              run: make covtest-sunny
+
+            - name: Run black-box tests
+              run: make covtest
+
+            - name: Coveralls
+              uses: coverallsapp/github-action@v2
+              with:
+                  github-token: ${{ secrets.GITHUB_TOKEN }}
+                  file: out/lcov-total.info
+                  format: lcov
+                  flag-name: run-macos
+                  parallel: true
+
+    finish:
+      needs: [build-linux, build-macos]
+      if: ${{ always() }}
+      runs-on: ubuntu-latest
+      steps:
+      - name: Coveralls Finished
+        uses: coverallsapp/github-action@v2
+        with:
+          parallel-finished: true
+          carryforward: "run-linux,run-macos"

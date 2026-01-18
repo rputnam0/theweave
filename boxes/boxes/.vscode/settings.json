@@ -1,0 +1,54 @@
+{
+    "C_Cpp.loggingLevel": "Debug",
+
+    "editor.autoClosingBrackets": "never",
+    "editor.dragAndDrop": false,
+    "editor.formatOnSave": false,
+    "editor.formatOnType": false,
+    "editor.renderWhitespace": "selection",
+    "editor.rulers": [120],
+    "editor.wordWrapColumn": 120,
+
+    "files.associations": {
+        "*.1.in": "troff",
+        "*.h": "c"
+    },
+    "files.encoding": "utf8",
+    "files.exclude": {
+        "**/.git": true,
+        "**/.idea": true,
+        "**/_site": true,
+        "**/_support": true,
+        "**/cmake-build-debug": true,
+        "**/coverage": true,
+        "**/out": true,
+        "**/vendor": true,
+        "**/venv": true
+    },
+
+    "todo-tree.highlights.defaultHighlight": {
+        "foreground": "#DD0000",
+        "rulerLane": "full"
+    },
+    "todo-tree.filtering.excludeGlobs": [
+        "**/out/**",
+        "**/build/**",
+        "**/.vscode/**",
+        "**/.github/**",
+        "**/_site/**",
+        "**/_support/**",
+        "**/vendor/**",
+        "**/venv/**"
+    ],
+    "todo-tree.general.statusBar": "total",
+    "todo-tree.general.tags": ["TODO", "FIXME", "CHECK"],
+    "todo-tree.regex.regex": "(//|#|<!--|\"|/\\*|^\\s*\\*).*?($TAGS)",
+    "todo-tree.tree.expanded": true,
+    "todo-tree.tree.showCountsInTree": true,
+
+    "[makefile]": {
+        "editor.insertSpaces": false,
+        "editor.detectIndentation": false,
+        "editor.renderWhitespace": "boundary"
+    }
+}
