@@ -1,0 +1,4 @@
+,---- [  ]
+| git status
+| node_modules/
+`----
