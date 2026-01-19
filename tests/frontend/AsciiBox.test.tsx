@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { AsciiBox } from '../../src/components/AsciiBox';
 import { AsciiMetricsContext } from '../../src/components/ui/ascii/metricsContext';
 
-const metrics = { charWidthPx: 10, lineHeightPx: 20 };
+const metrics = { charWidthPx: 10, lineHeightPx: 20, letterSpacingPx: 0 };
 
 const withMetrics = (ui: JSX.Element) => (
   <AsciiMetricsContext.Provider value={metrics}>
@@ -152,9 +152,20 @@ describe('AsciiBox', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
+    const scrollWidthSpy = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get');
+    const scrollHeightSpy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get');
+    scrollWidthSpy.mockImplementation(function () {
+      if (this.classList?.contains('ascii-overlay-content')) return 480;
+      return 0;
+    });
+    scrollHeightSpy.mockImplementation(function () {
+      if (this.classList?.contains('ascii-overlay-content')) return 260;
+      return 0;
+    });
+
     const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
     rectSpy.mockImplementation(function () {
-      if (this.classList?.contains('ascii-overlay')) {
+      if (this.classList?.contains('ascii-overlay-content')) {
         return { width: 480, height: 260, top: 0, left: 0, bottom: 260, right: 480 } as DOMRect;
       }
       return { width: 320, height: 200, top: 0, left: 0, bottom: 200, right: 320 } as DOMRect;
@@ -174,11 +185,100 @@ describe('AsciiBox', () => {
 
     await waitFor(() => {
       const root = container.querySelector('.ascii-root') as HTMLDivElement;
-      expect(root.style.minWidth).toBe('480px');
-      expect(root.style.minHeight).toBe('260px');
+      expect(root.style.minWidth).toBe('320px');
+      expect(root.style.minHeight).toBe('300px');
     });
 
     rectSpy.mockRestore();
+    scrollWidthSpy.mockRestore();
+    scrollHeightSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('clamps overlay width to container constraints', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ boxText: '', measured: { cols: 10, rows: 4 } }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const scrollWidthSpy = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get');
+    const scrollHeightSpy = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get');
+    scrollWidthSpy.mockImplementation(function () {
+      if (this.classList?.contains('ascii-overlay-content')) return 520;
+      return 0;
+    });
+    scrollHeightSpy.mockImplementation(function () {
+      if (this.classList?.contains('ascii-overlay-content')) return 120;
+      return 0;
+    });
+
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect');
+    rectSpy.mockImplementation(function () {
+      if (this.classList?.contains('ascii-overlay-content')) {
+        return { width: 520, height: 120, top: 0, left: 0, bottom: 120, right: 520 } as DOMRect;
+      }
+      return { width: 320, height: 200, top: 0, left: 0, bottom: 200, right: 320 } as DOMRect;
+    });
+
+    const element = (
+      <AsciiBox
+        design="simple"
+        content="Overlay clamp test"
+        overlay={<div style={{ width: 520, height: 120 }}>Overlay</div>}
+        apiBaseUrl="http://example.com"
+        debounceMs={0}
+      />
+    );
+    const { container, rerender } = render(withMetrics(element));
+    rerender(withMetrics(element));
+
+    await waitFor(() => {
+      const root = container.querySelector('.ascii-root') as HTMLDivElement;
+      expect(root.style.minWidth).toBe('320px');
+      expect(root.style.minHeight).toBe('160px');
+    });
+
+    rectSpy.mockRestore();
+    scrollWidthSpy.mockRestore();
+    scrollHeightSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it('pads overlay to clear border and padding', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        boxText: '******\n*    *\n*    *\n******',
+        measured: { cols: 6, rows: 4 },
+      }),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const element = (
+      <AsciiBox
+        design="simple"
+        cols={6}
+        rows={4}
+        padding="1ch"
+        content="Overlay padding"
+        overlay={<div>Overlay</div>}
+        apiBaseUrl="http://example.com"
+        debounceMs={0}
+      />
+    );
+    const { container, rerender } = render(withMetrics(element));
+    rerender(withMetrics(element));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const overlay = container.querySelector('.ascii-overlay') as HTMLDivElement;
+    const paddingLeft = Number.parseFloat(overlay.style.paddingLeft || '0');
+    const paddingTop = Number.parseFloat(overlay.style.paddingTop || '0');
+    expect(paddingLeft).toBeGreaterThan(15);
+    expect(paddingTop).toBeGreaterThan(30);
     warnSpy.mockRestore();
   });
 });

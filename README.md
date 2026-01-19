@@ -72,6 +72,8 @@
   - Calls `/api/box` (iterating until the measured size matches the target).
   - Detects the primary frame (box border) and aligns it to the CSS box, allowing decorative art to spill outside the frame.
   - Renders the ASCII in a `<pre>` and applies a fit transform so the frame lands on the CSS edges, even with custom font size/weight/line-height.
+  - When `overlay` is provided, the helper uses box config metadata (border + padding) to inset the overlay and expands the box height to fit the overlay content.
+  - Overlay width respects container constraints (so grid gaps remain intact), while height always expands to avoid clipping.
 
   Details: see `ascii-box-solver.md`.
 
@@ -126,6 +128,7 @@
   ### Offline tooling
   - `scripts/extract-box-glyphs.mjs` generates per-design glyph sets -> `src/components/ui/ascii/designGlyphs.json`
   - `scripts/extract-box-samples.mjs` generates per-design samples -> `src/components/ui/ascii/designSamples.json`
+  - `scripts/extract-box-layout.mjs` generates per-design border/padding metadata -> `src/components/ui/ascii/designLayout.json`
 
   ## Running the code
 

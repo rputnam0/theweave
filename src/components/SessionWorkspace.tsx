@@ -19,7 +19,7 @@ import {
 } from "./ui/command"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
 import { SessionNotesPanel } from './inspectors/SessionNotesPanel';
-import { OverviewMode, OverviewSidebar } from './modes/OverviewMode';
+import { OverviewMode } from './modes/OverviewMode';
 import { ArtifactsMode } from './modes/ArtifactsMode';
 import { TranscriptMode } from './modes/TranscriptMode';
 import dragonAscii from 'figma:asset/2581b88cdeb9018ce6635f351816b3af7eafeaac.png';
@@ -147,6 +147,11 @@ export function SessionWorkspace({ campaignName, onNavigate, toggleWindow }: Ses
 
   const handleExit = () => {
     onNavigate('sessions');
+  };
+
+  const handleJumpToTranscript = (timestamp: string) => {
+    setMode('transcript');
+    setHighlightedTimestamp(timestamp);
   };
 
   const menuItems = (
@@ -441,8 +446,8 @@ export function SessionWorkspace({ campaignName, onNavigate, toggleWindow }: Ses
         <div className="flex-1 flex overflow-hidden">
           {mode === 'overview' && (
             <OverviewMode 
-              selectedSession={selectedSession!}
-              onInspectorOpen={() => setInspectorOpen(true)}
+              sessionTitle={selectedSession?.title ?? 'Session Overview'}
+              onJumpToTranscript={handleJumpToTranscript}
             />
           )}
           

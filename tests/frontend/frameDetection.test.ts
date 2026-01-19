@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import samples from '../../src/components/ui/ascii/designSamples.json';
-import { detectFrame } from '../../src/components/ui/ascii/frame';
+import designGlyphs from '../../src/components/ui/ascii/designGlyphs.json';
+import { detectFrame, detectInnerBounds } from '../../src/components/ui/ascii/frame';
 import { displayWidth } from '../../src/components/ui/ascii/displayWidth';
 
 const artDesigns = new Set(['unicornthink', 'unicornsay']);
@@ -42,5 +43,52 @@ describe('detectFrame', () => {
       expect(unicornFrames.get(design)).toBe(true);
     }
     expect(frameCount).toBeGreaterThan(50);
+  });
+
+  it('detects inner bounds for scroll and parchment samples', () => {
+    const scrollSample = samples['scroll-akn'] || samples.scroll;
+    const parchmentSample = samples.parchment;
+    expect(scrollSample).toBeTruthy();
+    expect(parchmentSample).toBeTruthy();
+    const scrollFrame = detectFrame(scrollSample);
+    const parchmentFrame = detectFrame(parchmentSample);
+    expect(scrollFrame).not.toBeNull();
+    expect(parchmentFrame).not.toBeNull();
+    if (!scrollFrame || !parchmentFrame) return;
+
+    const scrollInner = detectInnerBounds(
+      scrollSample,
+      scrollFrame,
+      designGlyphs['scroll-akn'] || designGlyphs.scroll
+    );
+    const parchmentInner = detectInnerBounds(parchmentSample, parchmentFrame, designGlyphs.parchment);
+    expect(scrollInner).not.toBeNull();
+    expect(parchmentInner).not.toBeNull();
+    if (!scrollInner || !parchmentInner) return;
+
+    expect(scrollInner.left).toBeGreaterThan(scrollFrame.left);
+    expect(scrollInner.right).toBeLessThan(scrollFrame.right);
+    expect(scrollInner.top).toBeGreaterThan(scrollFrame.top);
+    expect(scrollInner.bottom).toBeLessThan(scrollFrame.bottom);
+
+    expect(parchmentInner.left).toBeGreaterThan(parchmentFrame.left);
+    expect(parchmentInner.right).toBeLessThan(parchmentFrame.right);
+    expect(parchmentInner.top).toBeGreaterThan(parchmentFrame.top);
+    expect(parchmentInner.bottom).toBeLessThan(parchmentFrame.bottom);
+
+    const scrollLines = scrollSample.split('\n');
+    const headerRow = scrollLines.findIndex((line) => line.includes('Scroll-AKN'));
+    expect(headerRow).toBeGreaterThan(-1);
+    if (headerRow >= 0) {
+      const headerSlice = scrollLines[headerRow].slice(scrollFrame.left, scrollFrame.right + 1);
+      const textIndex = headerSlice.indexOf('Scroll-AKN');
+      const lastPipeBeforeText = headerSlice.lastIndexOf('|', textIndex);
+      const firstPipeAfterText = headerSlice.indexOf('|', textIndex + 'Scroll-AKN'.length);
+      expect(textIndex).toBeGreaterThanOrEqual(0);
+      expect(lastPipeBeforeText).toBeGreaterThanOrEqual(0);
+      expect(firstPipeAfterText).toBeGreaterThan(textIndex);
+      expect(scrollInner.left).toBeGreaterThan(scrollFrame.left + lastPipeBeforeText);
+      expect(scrollInner.right).toBeLessThan(scrollFrame.left + firstPipeAfterText);
+    }
   });
 });

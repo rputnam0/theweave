@@ -11,7 +11,8 @@ import {
 } from './ascii/measure';
 import { computeInkFit, type InkFit } from './ascii/inkFit';
 import designGlyphs from './ascii/designGlyphs.json';
-import { detectFrame, maskTextToFrame } from './ascii/frame';
+import designLayout from './ascii/designLayout.json';
+import { detectFrame, detectInnerBounds, maskTextToFrame } from './ascii/frame';
 import { solveBox } from './ascii/boxesClient';
 import { renderNodeToText } from './ascii/serializeContent';
 import type { AsciiBoxAlign, AsciiBoxMeasured, AsciiBoxPadding, CssLength } from './ascii/types';
@@ -46,6 +47,8 @@ type AsciiBoxProps = {
   measureChars?: string;
   overlay?: ReactNode;
   overlayClassName?: string;
+  frameOnly?: boolean;
+  overlayInset?: boolean;
   title?: string;
   titleClassName?: string;
   titleOffsetCols?: number;
@@ -189,6 +192,8 @@ export function AsciiBox({
   measureChars,
   overlay,
   overlayClassName,
+  frameOnly,
+  overlayInset,
   title,
   titleClassName,
   titleOffsetCols = 0,
@@ -198,6 +203,7 @@ export function AsciiBox({
   const measureRef = useRef<HTMLPreElement | null>(null);
   const frameMeasureRef = useRef<HTMLPreElement | null>(null);
   const overlayRef = useRef<HTMLDivElement | null>(null);
+  const overlayContentRef = useRef<HTMLDivElement | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [boxText, setBoxText] = useState('');
@@ -212,6 +218,30 @@ export function AsciiBox({
     }
     return renderNodeToText(rawContent);
   }, [rawContent]);
+  const useOverlayInset = overlayInset ?? Boolean(overlay);
+  const shouldFrameOnly = frameOnly ?? Boolean(overlay);
+  const borderGlyphs = useMemo(
+    () => designGlyphs[design as keyof typeof designGlyphs] ?? '',
+    [design]
+  );
+  const layoutMeta = useMemo(
+    () => (designLayout as Record<string, { border: AsciiBoxPadding; padding: AsciiBoxPadding; contentInset: AsciiBoxPadding }>)[design] ?? null,
+    [design]
+  );
+  const hasPaddingOverride = [
+    padding,
+    paddingX,
+    paddingY,
+    paddingTop,
+    paddingRight,
+    paddingBottom,
+    paddingLeft,
+  ].some((value) => value !== undefined);
+  const textForBox = useMemo(() => {
+    if (shouldFrameOnly) return ' ';
+    const trimmed = text.trim();
+    return trimmed.length ? text : ' ';
+  }, [shouldFrameOnly, text]);
   const resolvedMeasureChars = useMemo(
     () => measureChars ?? getMeasureCharsForDesign(design, DEFAULT_MEASURE_CHARS),
     [measureChars, design]
@@ -238,15 +268,15 @@ export function AsciiBox({
   }, []);
 
   useEffect(() => {
-    const element = overlayRef.current;
+    const element = overlayContentRef.current;
     if (!element) return;
     let frame = 0;
-    const observer = new ResizeObserver((entries) => {
-      if (!entries[0]) return;
-      const next = entries[0].contentRect;
+    const observer = new ResizeObserver(() => {
       window.cancelAnimationFrame(frame);
       frame = window.requestAnimationFrame(() => {
-        setOverlaySize({ width: next.width, height: next.height });
+        const width = element.scrollWidth || element.clientWidth;
+        const height = element.scrollHeight || element.clientHeight;
+        setOverlaySize({ width, height });
       });
     });
     observer.observe(element);
@@ -272,7 +302,9 @@ export function AsciiBox({
     const heightPx = rows ? rows * metrics.lineHeightPx : resolveCssLengthPx(height, metrics, element);
     if (widthPx !== null) warnIfFractional('width', widthPx, charAdvancePx);
     if (heightPx !== null) warnIfFractional('height', heightPx, metrics.lineHeightPx);
-    const snappedPadding = snapPadding(paddingSpec, metrics, element);
+    const snappedPadding = hasPaddingOverride
+      ? snapPadding(paddingSpec, metrics, element)
+      : layoutMeta?.padding ?? snapPadding(paddingSpec, metrics, element);
     if (paddingSpec.top) {
       const topPx = resolveCssLengthPx(paddingSpec.top, metrics, element);
       if (topPx !== null) warnIfFractional('padding-top', topPx, metrics.lineHeightPx);
@@ -289,25 +321,37 @@ export function AsciiBox({
       const leftPx = resolveCssLengthPx(paddingSpec.left, metrics, element);
       if (leftPx !== null) warnIfFractional('padding-left', leftPx, charAdvancePx);
     }
-    const effectiveWidth = Math.max(
-      widthPx ?? containerSize.width,
-      overlaySize.width
+    const border = layoutMeta?.border ?? { top: 1, right: 1, bottom: 1, left: 1 };
+    const baseCols = cols || snapToCols(widthPx ?? containerSize.width, metrics);
+    const baseRows = rows
+      ? rows
+      : (overlay ? 1 : snapToRows(heightPx ?? containerSize.height, metrics));
+    const overlayCols = overlaySize.width
+      ? Math.max(1, Math.ceil((overlaySize.width + metrics.letterSpacingPx) / charAdvancePx))
+      : 0;
+    const overlayRows = overlaySize.height
+      ? Math.max(1, Math.ceil(overlaySize.height / metrics.lineHeightPx))
+      : 0;
+    const overlayInsetCols = useOverlayInset
+      ? snappedPadding.left + snappedPadding.right + border.left + border.right
+      : 0;
+    const overlayInsetRows = useOverlayInset
+      ? snappedPadding.top + snappedPadding.bottom + border.top + border.bottom
+      : 0;
+    const overlayTotalCols = overlayCols ? overlayCols + overlayInsetCols : 0;
+    const overlayTotalRows = overlayRows ? overlayRows + overlayInsetRows : 0;
+    const targetCols = Math.max(2, baseCols, overlayTotalCols);
+    const targetRows = Math.max(2, baseRows, overlayTotalRows);
+    const innerCols = Math.max(
+      1,
+      targetCols - snappedPadding.left - snappedPadding.right - border.left - border.right
     );
-    const effectiveHeight = Math.max(
-      heightPx ?? containerSize.height,
-      overlaySize.height
-    );
-    const rawCols = cols || effectiveWidth;
-    const rawRows = rows || effectiveHeight;
-    const targetCols = Math.max(2, cols || snapToCols(rawCols, metrics));
-    const targetRows = Math.max(2, rows || snapToRows(rawRows, metrics));
-    const innerCols = Math.max(1, targetCols - snappedPadding.left - snappedPadding.right - 2);
-    const normalized = normalizeText(text, tabs);
+    const normalized = normalizeText(textForBox, tabs);
     const wrapped = wrapText(normalized, innerCols, wrap, overflow);
     const lines = wrapped.split('\n').length;
     const inferredRows = rows
       ? targetRows
-      : Math.max(targetRows, lines + snappedPadding.top + snappedPadding.bottom + 2);
+      : Math.max(targetRows, lines + snappedPadding.top + snappedPadding.bottom + border.top + border.bottom);
     return {
       padding: snappedPadding,
       cols: targetCols,
@@ -318,7 +362,7 @@ export function AsciiBox({
     containerSize.width,
     containerSize.height,
     metrics,
-    text,
+    textForBox,
     tabs,
     wrap,
     overflow,
@@ -335,6 +379,10 @@ export function AsciiBox({
     rows,
     overlaySize.width,
     overlaySize.height,
+    overlay,
+    layoutMeta,
+    useOverlayInset,
+    hasPaddingOverride,
   ]);
 
   const frameData = useMemo(() => {
@@ -429,6 +477,80 @@ export function AsciiBox({
     if (secondaryOverflow + 0.25 < primaryOverflow) return secondaryFit;
     return primaryFit;
   }, [domFit, frameFit, frameInkFit, inkFit, layout, measured, metrics]);
+
+  const overlayPadding = useMemo(() => {
+    if (!layout || !useOverlayInset) return null;
+    const charAdvance = metrics.charWidthPx + metrics.letterSpacingPx;
+    const scaleX = resolvedFit?.scaleX ?? 1;
+    const scaleY = resolvedFit?.scaleY ?? 1;
+    let insetLeft = layout.padding.left + 1;
+    let insetRight = layout.padding.right + 1;
+    let insetTop = layout.padding.top + 1;
+    let insetBottom = layout.padding.bottom + 1;
+    if (layout && layoutMeta && useOverlayInset) {
+      const insetLeft = layoutMeta.border.left + layout.padding.left;
+      const insetRight = layoutMeta.border.right + layout.padding.right;
+      const insetTop = layoutMeta.border.top + layout.padding.top;
+      const insetBottom = layoutMeta.border.bottom + layout.padding.bottom;
+      const paddingLeft = insetLeft * charAdvance * scaleX;
+      const paddingRight = insetRight * charAdvance * scaleX;
+      const paddingTop = insetTop * metrics.lineHeightPx * scaleY;
+      const paddingBottom = insetBottom * metrics.lineHeightPx * scaleY;
+      return {
+        paddingLeft,
+        paddingRight,
+        paddingTop,
+        paddingBottom,
+        boxSizing: 'border-box',
+      } as CSSProperties;
+    }
+    if (frameData) {
+      const inner = detectInnerBounds(boxText, frameData.frame, borderGlyphs);
+      if (inner) {
+        const borderLeft = Math.max(1, inner.left - frameData.frame.left);
+        const borderRight = Math.max(1, frameData.frame.right - inner.right);
+        const borderTop = Math.max(1, inner.top - frameData.frame.top);
+        const borderBottom = Math.max(1, frameData.frame.bottom - inner.bottom);
+        insetLeft = layout.padding.left + borderLeft;
+        insetRight = layout.padding.right + borderRight;
+        insetTop = layout.padding.top + borderTop;
+        insetBottom = layout.padding.bottom + borderBottom;
+      }
+    }
+    const paddingLeft = insetLeft * charAdvance * scaleX;
+    const paddingRight = insetRight * charAdvance * scaleX;
+    const paddingTop = insetTop * metrics.lineHeightPx * scaleY;
+    const paddingBottom = insetBottom * metrics.lineHeightPx * scaleY;
+    return {
+      paddingLeft,
+      paddingRight,
+      paddingTop,
+      paddingBottom,
+      boxSizing: 'border-box',
+    } as CSSProperties;
+  }, [boxText, frameData, layout, layoutMeta, metrics, resolvedFit, useOverlayInset, borderGlyphs]);
+
+  const overlayInsetPx = useMemo(() => {
+    if (!layout || !useOverlayInset || !overlay) return { width: 0, height: 0 };
+    const border = layoutMeta?.border ?? { top: 1, right: 1, bottom: 1, left: 1 };
+    const insetLeft = border.left + layout.padding.left;
+    const insetRight = border.right + layout.padding.right;
+    const insetTop = border.top + layout.padding.top;
+    const insetBottom = border.bottom + layout.padding.bottom;
+    const width = (insetLeft + insetRight) * (metrics.charWidthPx + metrics.letterSpacingPx);
+    const height = (insetTop + insetBottom) * metrics.lineHeightPx;
+    return { width, height };
+  }, [layout, layoutMeta, metrics, overlay, useOverlayInset]);
+
+  const overlayMinWidth = useMemo(() => {
+    if (!overlay || !overlaySize.width) return undefined;
+    if (cols !== undefined || width !== undefined) return undefined;
+    const targetWidth = overlaySize.width + overlayInsetPx.width;
+    if (containerSize.width > 0) {
+      return Math.min(targetWidth, containerSize.width);
+    }
+    return undefined;
+  }, [cols, width, overlay, overlaySize.width, overlayInsetPx.width, containerSize.width]);
 
   useLayoutEffect(() => {
     const container = containerRef.current;
@@ -537,8 +659,11 @@ export function AsciiBox({
   useEffect(() => {
     if (!layout) return;
     const envBaseUrl = (import.meta as ImportMeta & { env: Record<string, string> }).env?.VITE_BOXES_API_BASE_URL;
+    const fallbackBase = import.meta.env?.DEV ? 'http://localhost:3005' : '';
     const baseUrl = apiBaseUrl ?? envBaseUrl ?? '';
-    const resolvedBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    const resolvedBase = (baseUrl || fallbackBase).endsWith('/')
+      ? (baseUrl || fallbackBase).slice(0, -1)
+      : (baseUrl || fallbackBase);
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       setPending(true);
@@ -590,8 +715,10 @@ export function AsciiBox({
       : null),
     ...(overlaySize.width || overlaySize.height
       ? {
-          minWidth: overlaySize.width ? `${overlaySize.width}px` : undefined,
-          minHeight: overlaySize.height ? `${overlaySize.height}px` : undefined,
+          minWidth: overlayMinWidth !== undefined ? `${overlayMinWidth}px` : undefined,
+          minHeight: overlaySize.height
+            ? `${overlaySize.height + overlayInsetPx.height}px`
+            : undefined,
         }
       : null),
     ...style,
@@ -621,8 +748,14 @@ export function AsciiBox({
         </pre>
       )}
       {overlay && (
-        <div ref={overlayRef} className={cn('ascii-overlay', overlayClassName)}>
-          {overlay}
+        <div
+          ref={overlayRef}
+          className={cn('ascii-overlay', overlayClassName)}
+          style={overlayPadding ?? undefined}
+        >
+          <div ref={overlayContentRef} className="ascii-overlay-content">
+            {overlay}
+          </div>
         </div>
       )}
       {title && layout && (

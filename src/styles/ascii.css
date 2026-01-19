@@ -24,6 +24,15 @@
   position: absolute;
   inset: 0;
   pointer-events: auto;
+  white-space: normal;
+  letter-spacing: normal;
+}
+
+.ascii-overlay-content {
+  display: flow-root;
+  width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ascii-debug {

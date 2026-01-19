@@ -41,18 +41,34 @@ export function AsciiBoxesDemo() {
             const backgroundColor = palettes[index % palettes.length];
             const letterSpacing = index % 5 === 0 ? '0.6px' : undefined;
             const alignClass = index % 3 === 0 ? 'items-start' : index % 3 === 1 ? 'items-center' : 'items-end';
+            const overlayCopy = (
+              <div className="flex h-full flex-col gap-2 text-[11px] leading-snug text-white">
+                <div className="text-[10px] uppercase tracking-wide opacity-70">{design}</div>
+                <p>
+                  This overlay block is here to test padding, line height, and glyph fit
+                  against the ASCII frame.
+                </p>
+                <p className="opacity-80">
+                  Resize or change typography to spot any overlap or border collisions.
+                </p>
+              </div>
+            );
             return (
               <AsciiBox
                 key={design}
                 design={design}
                 content={design}
+                overlay={overlayCopy}
                 apiBaseUrl={apiBaseUrl}
                 debug={showDebug}
                 padding={padding as string | number}
-                className={`rounded-xl shadow-lg flex justify-center text-white ${alignClass}`}
+                className={`rounded-xl shadow-lg flex justify-center text-white w-full min-w-0 ${alignClass}`}
                 style={{
                   gridColumn: `span ${span} / span ${span}`,
                   height: `${height}px`,
+                  width: '100%',
+                  minWidth: 0,
+                  minHeight: 0,
                   backgroundColor,
                   fontSize: `${fontSize}px`,
                   lineHeight: `${lineHeight}px`,

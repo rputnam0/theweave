@@ -1,20 +1,13 @@
+import { ExternalLink, MapPin } from 'lucide-react';
 import { Win95Divider } from '../ui/Win95Primitives';
 import { AsciiBox } from '../AsciiBox';
-import { countWrappedLines } from '../../utils/asciiBox';
-
-const PROTOTYPE_PADDING_PX = 24;
-const CHAR_WIDTH_PX = 6.6;
-const LINE_HEIGHT_PX = 13.2;
-const PAD_COLS = Math.max(1, Math.round(PROTOTYPE_PADDING_PX / CHAR_WIDTH_PX));
-const PAD_ROWS = Math.max(1, Math.round(PROTOTYPE_PADDING_PX / LINE_HEIGHT_PX));
-const GRID_MAX_COLS = 86;
-const GRID_GAP_PX = 10;
-const MIN_BOX_COLS = 22;
 
 export function OverviewMode({
-  selectedSession,
+  sessionTitle,
+  onJumpToTranscript,
 }: {
-  selectedSession: { title: string };
+  sessionTitle: string;
+  onJumpToTranscript: (timestamp: string) => void;
 }) {
   // Mock Data from previous Sidebar
   const summary = {
@@ -29,20 +22,14 @@ export function OverviewMode({
       location: "Cragmaw Hideout"
     }
   };
-
-  const recapText = `${selectedSession.title}\n\n${summary.recap}\n\n${summary.meta.duration} | ${summary.meta.location}`;
+  const recapText = `${sessionTitle}\n\n${summary.recap}\n\n${summary.meta.duration} | ${summary.meta.location}`;
   const quoteText = `"${summary.quote.text}"\n\n— ${summary.quote.speaker} @ ${summary.quote.timestamp}`;
-  const gapCols = Math.max(1, Math.round(GRID_GAP_PX / 6.6));
-  const availableCols = GRID_MAX_COLS - gapCols - 1;
-  let recapCols = Math.floor((availableCols * 2) / 3);
-  let quoteCols = availableCols - recapCols;
-  if (recapCols < MIN_BOX_COLS) recapCols = MIN_BOX_COLS;
-  if (quoteCols < MIN_BOX_COLS) quoteCols = MIN_BOX_COLS;
-  const recapInner = Math.max(10, recapCols - (PAD_COLS * 2) - 2);
-  const quoteInner = Math.max(10, quoteCols - (PAD_COLS * 2) - 2);
-  const recapLines = countWrappedLines(recapText, recapInner);
-  const quoteLines = countWrappedLines(quoteText, quoteInner);
-  const sharedRows = Math.max(recapLines, quoteLines) + (PAD_ROWS * 2) + 2;
+  const narrativeText = [
+    "The party's journey into the Cragmaw Hideout began with a stealthy approach along the southern trail. Krag took point, using the dense foliage to mask his movement, while Mira kept watch from the rear. The sound of rushing water from the nearby stream masked their footsteps, allowing them to surprise the two goblin sentries posted outside the cave mouth.",
+    "Inside the cave, the air grew damp and cold. The party navigated the slippery bridge, avoiding the flood trap triggered by the goblins in the twin pools room. Sildar Hallwinter was found bound and beaten in the eating cave, guarded by a particularly vicious goblin named Yeemik. Through careful negotiation—and a hefty bribe of 10 gold pieces—the party secured Sildar's release without further bloodshed.",
+    "The final confrontation took place in the bugbear's quarters. Klarg, alerted by the noise, had prepared an ambush. However, the party's coordination proved superior. While the wolf Ripper was distracted by the bard's illusions, the fighter engaged Klarg directly. The battle was intense, with Klarg nearly felling the cleric with a single blow of his morningstar.",
+    "Victory came swiftly after Klarg fell. Among his possessions, the party found crates marked with the Lionshield Coster seal, confirming the goblins had been raiding caravans. More importantly, a note found in Klarg's chest revealed he was taking orders from someone called \"The Black Spider,\" who sought the location of Wave Echo Cave.",
+  ].join('\n\n');
 
   return (
     <div className="flex h-full w-full overflow-hidden bg-[var(--background)]">
@@ -52,30 +39,65 @@ export function OverviewMode({
             <article className="max-w-none">
                
                {/* Summary & Quote Section */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                  {/* Recap */}
-                 <div className="md:col-span-2 h-full">
+                 <div className="md:col-span-2">
                    <AsciiBox
                      design="simple"
-                     cols={recapCols}
-                     rows={sharedRows}
-                     className="bg-[var(--card)]"
                      content={recapText}
-                     padding={PROTOTYPE_PADDING_PX}
-                     title={selectedSession.title}
-                     titleClassName="text-[12px] font-bold bg-[var(--card)] px-1"
+                     padding={24}
+                     className="bg-[var(--card)]"
+                     overlay={
+                       <div>
+                         <h1 className="mb-3 font-mono leading-none text-[var(--foreground)] text-[18px] font-bold tracking-tight">
+                           {sessionTitle}
+                         </h1>
+                         <p className="text-[var(--text-base)] text-[var(--foreground)] opacity-80 leading-relaxed font-mono">
+                           {summary.recap}
+                         </p>
+
+                         <div className="mt-auto pt-[7px] border-t border-dashed border-[var(--border)]">
+                           <div className="flex items-center gap-3 text-[var(--muted-foreground)] text-[var(--text-base)] leading-none font-mono">
+                             <span className="flex items-center gap-1 font-bold text-[var(--foreground)] opacity-90 text-[13px]">Jan 08, 2026</span>
+                             <span className="opacity-30">|</span>
+                             <span className="text-[13px]">{summary.meta.duration}</span>
+                             <span className="opacity-30">|</span>
+                             <span className="flex items-center gap-1 text-[13px]">
+                               <MapPin className="w-3 h-3" />
+                               {summary.meta.location}
+                             </span>
+                           </div>
+                         </div>
+                       </div>
+                     }
                    />
                  </div>
 
                  {/* Quote */}
-                 <div className="md:col-span-1 h-full">
+                 <div className="md:col-span-1">
                    <AsciiBox
-                     design="simple"
-                     cols={quoteCols}
-                     rows={sharedRows}
-                     className="bg-[var(--card)]"
+                     design="scroll"
                      content={quoteText}
-                     padding={PROTOTYPE_PADDING_PX}
+                     padding={24}
+                     className="bg-[var(--card)]"
+                     overlay={
+                       <div>
+                         <div className="flex-1">
+                           <div className="text-[var(--text-base)] text-[var(--foreground)] opacity-80 leading-relaxed italic mb-2 font-mono border-l-2 border-[var(--border)] pl-2 my-2">
+                             "{summary.quote.text}"
+                           </div>
+                         </div>
+                         <div className="flex justify-end mt-2 pt-2 border-t border-dashed border-[var(--border)]">
+                           <button
+                             onClick={() => onJumpToTranscript(summary.quote.timestamp)}
+                             className="text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:underline text-[10px] flex items-center gap-1 uppercase font-bold font-mono"
+                             title="View in transcript"
+                           >
+                             <span>{summary.quote.timestamp}</span> <ExternalLink className="w-3 h-3" />
+                           </button>
+                         </div>
+                       </div>
+                     }
                    />
                  </div>
                </div>
@@ -83,23 +105,74 @@ export function OverviewMode({
                {/* Narrative Content */}
                <AsciiBox
                  design="parchment"
-                 cols={GRID_MAX_COLS}
+                 content={narrativeText}
+                 padding={24}
                  className="bg-[var(--card)]"
-                 content={[
-                   "The party's journey into the Cragmaw Hideout began with a stealthy approach along the southern trail. Krag took point, using the dense foliage to mask his movement, while Mira kept watch from the rear. The sound of rushing water from the nearby stream masked their footsteps, allowing them to surprise the two goblin sentries posted outside the cave mouth.",
-                   "Inside the cave, the air grew damp and cold. The party navigated the slippery bridge, avoiding the flood trap triggered by the goblins in the twin pools room. Sildar Hallwinter was found bound and beaten in the eating cave, guarded by a particularly vicious goblin named Yeemik. Through careful negotiation—and a hefty bribe of 10 gold pieces—the party secured Sildar's release without further bloodshed.",
-                   "The final confrontation took place in the bugbear's quarters. Klarg, alerted by the noise, had prepared an ambush. However, the party's coordination proved superior. While the wolf Ripper was distracted by the bard's illusions, the fighter engaged Klarg directly. The battle was intense, with Klarg nearly felling the cleric with a single blow of his morningstar.",
-                   "Victory came swiftly after Klarg fell. Among his possessions, the party found crates marked with the Lionshield Coster seal, confirming the goblins had been raiding caravans. More importantly, a note found in Klarg's chest revealed he was taking orders from someone called \"The Black Spider,\" who sought the location of Wave Echo Cave.",
-                 ].join('\n\n')}
-                 padding={PROTOTYPE_PADDING_PX}
+                 overlay={
+                   <div>
+                     <div className="space-y-4 text-[var(--text-base)] leading-relaxed text-[var(--foreground)] font-[var(--font-weight-normal)]">
+                       <p>
+                         The party&apos;s journey into the Cragmaw Hideout began with a stealthy approach along the southern trail.
+                         Krag took point, using the dense foliage to mask his movement, while Mira kept watch from the rear.
+                         The sound of rushing water from the nearby stream masked their footsteps, allowing them to surprise the two goblin sentries posted outside the cave mouth.
+                         <sup
+                           className="ml-1 text-[var(--primary)] cursor-pointer hover:underline transition-none select-none text-[9px]"
+                           onClick={() => onJumpToTranscript('0:12:45')}
+                           title="View evidence"
+                         >
+                           [0:12:45]
+                         </sup>
+                       </p>
+
+                       <p>
+                         Inside the cave, the air grew damp and cold. The party navigated the slippery bridge, avoiding the flood trap triggered by the goblins in the twin pools room.
+                         Sildar Hallwinter was found bound and beaten in the eating cave, guarded by a particularly vicious goblin named Yeemik.
+                         Through careful negotiation—and a hefty bribe of 10 gold pieces—the party secured Sildar&apos;s release without further bloodshed.
+                         <sup
+                           className="ml-1 text-[var(--primary)] cursor-pointer hover:underline transition-none select-none text-[9px]"
+                           onClick={() => onJumpToTranscript('0:45:20')}
+                           title="View evidence"
+                         >
+                           [0:45:20]
+                         </sup>
+                       </p>
+
+                       <p>
+                         The final confrontation took place in the bugbear&apos;s quarters. Klarg, alerted by the noise, had prepared an ambush.
+                         However, the party&apos;s coordination proved superior. While the wolf Ripper was distracted by the bard&apos;s illusions, the fighter engaged Klarg directly.
+                         The battle was intense, with Klarg nearly felling the cleric with a single blow of his morningstar.
+                         <sup
+                           className="ml-1 text-[var(--primary)] cursor-pointer hover:underline transition-none select-none text-[9px]"
+                           onClick={() => onJumpToTranscript('1:15:00')}
+                           title="View evidence"
+                         >
+                           [1:15:00]
+                         </sup>
+                       </p>
+
+                       <p>
+                         Victory came swiftly after Klarg fell. Among his possessions, the party found crates marked with the Lionshield Coster seal, confirming the goblins had been raiding caravans.
+                         More importantly, a note found in Klarg&apos;s chest revealed he was taking orders from someone called &quot;The Black Spider,&quot; who sought the location of Wave Echo Cave.
+                         <sup
+                           className="ml-1 text-[var(--primary)] cursor-pointer hover:underline transition-none select-none text-[9px]"
+                           onClick={() => onJumpToTranscript('1:32:10')}
+                           title="View evidence"
+                         >
+                           [1:32:10]
+                         </sup>
+                       </p>
+                     </div>
+
+                     <div className="mt-8 text-center">
+                       <Win95Divider />
+                       <div className="pt-2 text-[var(--text-base)] text-[var(--muted-foreground)]">
+                         End of Session Log
+                       </div>
+                     </div>
+                   </div>
+                 }
                />
 
-               <div className="mt-8 text-center">
-                 <Win95Divider />
-                 <div className="pt-2 text-[var(--text-base)] text-[var(--muted-foreground)]">
-                   End of Session Log
-                 </div>
-               </div>
             </article>
          </div>
       </div>

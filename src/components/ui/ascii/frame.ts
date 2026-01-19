@@ -8,6 +8,13 @@ export type AsciiFrame = {
   confidence: number;
 };
 
+export type AsciiBounds = {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+};
+
 type RowStats = {
   min: number;
   max: number;
@@ -141,4 +148,241 @@ export const maskTextToFrame = (text: string, frame: AsciiFrame) => {
       return output;
     })
     .join('\n');
+};
+
+const buildRowCells = (line: string) => {
+  const cells: string[] = [];
+  for (const ch of line) {
+    const width = displayWidth(ch);
+    for (let i = 0; i < width; i += 1) {
+      cells.push(ch);
+    }
+  }
+  return cells;
+};
+
+export const detectInnerBounds = (text: string, frame: AsciiFrame, borderGlyphs?: string): AsciiBounds | null => {
+  const lines = text.split('\n');
+  if (!lines.length) return null;
+  const glyphSet = new Set((borderGlyphs ?? '').split(''));
+  const rowCells = lines.map((line) => buildRowCells(line));
+  const maxCols = Math.max(0, ...rowCells.map((cells) => cells.length));
+  const padded = rowCells.map((cells) => {
+    if (cells.length >= maxCols) return cells;
+    return [...cells, ...Array.from({ length: maxCols - cells.length }, () => SPACE)];
+  });
+
+  const interiorStarts: number[] = [];
+  const interiorEnds: number[] = [];
+  const candidates: Array<{
+    row: number;
+    innerLeft: number;
+    innerRight: number;
+    innerWidth: number;
+    leftBorderEnd: number;
+    rightBorderEnd: number;
+    leftBorderWidth: number;
+    rightBorderWidth: number;
+  }> = [];
+
+  const extendBorderRun = (
+    cells: string[],
+    borderChar: string,
+    end: number,
+    direction: number,
+    gapLimit = 1
+  ) => {
+    if (!borderChar || borderChar === SPACE) return end;
+    let cursor = end + direction;
+    let gap = 0;
+    while (cursor >= frame.left && cursor <= frame.right) {
+      const cell = cells[cursor] ?? SPACE;
+      if (cell === SPACE) {
+        gap += 1;
+        if (gap > gapLimit) break;
+        cursor += direction;
+        continue;
+      }
+      if (cell === borderChar) {
+        end = cursor;
+        cursor += direction;
+        continue;
+      }
+      break;
+    }
+    return end;
+  };
+
+  for (let row = frame.top + 1; row <= frame.bottom - 1; row += 1) {
+    const cells = padded[row];
+    if (!cells) continue;
+    let leftBorderStart = -1;
+    let rightBorderStart = -1;
+    for (let col = frame.left; col <= frame.right; col += 1) {
+      if (cells[col] !== SPACE) {
+        leftBorderStart = col;
+        break;
+      }
+    }
+    for (let col = frame.right; col >= frame.left; col -= 1) {
+      if (cells[col] !== SPACE) {
+        rightBorderStart = col;
+        break;
+      }
+    }
+    if (leftBorderStart === -1 || rightBorderStart === -1 || rightBorderStart <= leftBorderStart) continue;
+
+    let leftBorderEnd = leftBorderStart;
+    while (leftBorderEnd + 1 <= frame.right && cells[leftBorderEnd + 1] !== SPACE) {
+      leftBorderEnd += 1;
+    }
+
+    let rightBorderEnd = rightBorderStart;
+    while (rightBorderEnd - 1 >= frame.left && cells[rightBorderEnd - 1] !== SPACE) {
+      rightBorderEnd -= 1;
+    }
+
+    leftBorderEnd = extendBorderRun(cells, cells[leftBorderStart], leftBorderEnd, 1);
+    rightBorderEnd = extendBorderRun(cells, cells[rightBorderStart], rightBorderEnd, -1);
+
+    const leftBorderWidth = leftBorderEnd - leftBorderStart + 1;
+    const rightBorderWidth = rightBorderStart - rightBorderEnd + 1;
+    const innerLeft = leftBorderEnd + 1;
+    const innerRight = rightBorderEnd - 1;
+    if (innerRight < innerLeft) continue;
+    const innerWidth = innerRight - innerLeft + 1;
+    let spaceCount = 0;
+    const uniqueNonSpace = new Set<string>();
+    for (let col = innerLeft; col <= innerRight; col += 1) {
+      const cell = cells[col] ?? SPACE;
+      if (cell === SPACE) {
+        spaceCount += 1;
+      } else {
+        uniqueNonSpace.add(cell);
+      }
+    }
+    const isBorderFill = spaceCount === 0 && uniqueNonSpace.size === 1;
+    if (isBorderFill) continue;
+    interiorStarts.push(innerLeft);
+    interiorEnds.push(innerRight);
+    candidates.push({
+      row,
+      innerLeft,
+      innerRight,
+      innerWidth,
+      leftBorderEnd,
+      rightBorderEnd,
+      leftBorderWidth,
+      rightBorderWidth,
+    });
+  }
+
+  if (!interiorStarts.length || !interiorEnds.length) return null;
+  const getMedian = (values: number[]) => {
+    if (!values.length) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    return sorted[Math.floor(sorted.length / 2)];
+  };
+
+  const getMode = (values: number[]) => {
+    if (!values.length) return 0;
+    const counts = new Map<number, number>();
+    let bestValue = values[0];
+    let bestCount = 0;
+    for (const value of values) {
+      const nextCount = (counts.get(value) ?? 0) + 1;
+      counts.set(value, nextCount);
+      if (nextCount > bestCount) {
+        bestCount = nextCount;
+        bestValue = value;
+      }
+    }
+    return bestValue;
+  };
+
+  const medianWidth = getMedian(candidates.map((candidate) => candidate.innerWidth));
+  const widthThreshold = Math.max(1, medianWidth * 0.6);
+  const useCandidates = candidates.filter((candidate) => candidate.innerWidth >= widthThreshold);
+  const activeCandidates = useCandidates.length ? useCandidates : candidates;
+
+  const maxInnerLeft = Math.max(...activeCandidates.map((candidate) => candidate.innerLeft));
+  const minInnerRight = Math.min(...activeCandidates.map((candidate) => candidate.innerRight));
+  const innerLeft = Math.max(frame.left + 1, Math.min(maxInnerLeft, frame.right - 1));
+  const innerRight = Math.max(innerLeft, Math.min(minInnerRight, frame.right - 1));
+
+  const medianLeftEnd = getMode(activeCandidates.map((candidate) => candidate.leftBorderEnd));
+  const medianRightEnd = getMode(activeCandidates.map((candidate) => candidate.rightBorderEnd));
+  const medianLeftWidth = getMode(activeCandidates.map((candidate) => candidate.leftBorderWidth));
+  const medianRightWidth = getMode(activeCandidates.map((candidate) => candidate.rightBorderWidth));
+  const candidateByRow = new Map(activeCandidates.map((candidate) => [candidate.row, candidate]));
+
+  const matchesInterior = (candidate: typeof candidates[number]) => {
+    if (Math.abs(candidate.leftBorderEnd - medianLeftEnd) > 1) return false;
+    if (Math.abs(candidate.rightBorderEnd - medianRightEnd) > 1) return false;
+    if (Math.abs(candidate.leftBorderWidth - medianLeftWidth) > 1) return false;
+    if (Math.abs(candidate.rightBorderWidth - medianRightWidth) > 1) return false;
+    if (Math.abs(candidate.innerLeft - innerLeft) > 1) return false;
+    if (Math.abs(candidate.innerRight - innerRight) > 1) return false;
+    return true;
+  };
+
+  const hasEdgeGlyphs = (row: number, edgeBand = 2) => {
+    if (!glyphSet.size) return false;
+    const cells = padded[row];
+    if (!cells) return false;
+    const leftLimit = Math.min(innerRight, innerLeft + edgeBand);
+    for (let col = innerLeft; col <= leftLimit; col += 1) {
+      if (glyphSet.has(cells[col] ?? SPACE)) return true;
+    }
+    const rightStart = Math.max(innerLeft, innerRight - edgeBand);
+    for (let col = rightStart; col <= innerRight; col += 1) {
+      if (glyphSet.has(cells[col] ?? SPACE)) return true;
+    }
+    return false;
+  };
+
+  let innerTop = -1;
+  let innerBottom = -1;
+  for (let row = frame.top + 1; row <= frame.bottom - 1; row += 1) {
+    const candidate = candidateByRow.get(row);
+    if (candidate && matchesInterior(candidate) && !hasEdgeGlyphs(row)) {
+      innerTop = row;
+      break;
+    }
+  }
+  for (let row = frame.bottom - 1; row >= frame.top + 1; row -= 1) {
+    const candidate = candidateByRow.get(row);
+    if (candidate && matchesInterior(candidate) && !hasEdgeGlyphs(row)) {
+      innerBottom = row;
+      break;
+    }
+  }
+  if (innerTop === -1 || innerBottom === -1) {
+    for (let row = frame.top + 1; row <= frame.bottom - 1; row += 1) {
+      const candidate = candidateByRow.get(row);
+      if (candidate && matchesInterior(candidate)) {
+        innerTop = row;
+        break;
+      }
+    }
+    for (let row = frame.bottom - 1; row >= frame.top + 1; row -= 1) {
+      const candidate = candidateByRow.get(row);
+      if (candidate && matchesInterior(candidate)) {
+        innerBottom = row;
+        break;
+      }
+    }
+  }
+
+  if (innerTop === -1 || innerBottom === -1 || innerBottom <= innerTop) {
+    innerTop = Math.min(frame.bottom - 1, frame.top + 1);
+    innerBottom = Math.max(innerTop, frame.bottom - 1);
+  }
+
+  return {
+    left: innerLeft,
+    right: innerRight,
+    top: innerTop,
+    bottom: innerBottom,
+  };
 };
